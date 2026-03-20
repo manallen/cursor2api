@@ -274,9 +274,33 @@ export async function convertToCursorRequest(req: AnthropicRequest): Promise<Cur
         const tools = req.tools!;
         const toolChoice = req.tool_choice;
         const toolsCfg = config.tools || { schemaMode: 'compact', descriptionMaxLength: 50 };
+        const isDisabled = toolsCfg.disabled === true;
         const isPassthrough = toolsCfg.passthrough === true;
 
-        if (isPassthrough) {
+        if (isDisabled) {
+            // ★ 禁用模式：完全不注入工具定义和 few-shot 示例
+            // 目的：最大化节省上下文空间，让模型凭训练记忆处理工具调用
+            // 响应侧的 parseToolCalls 仍然生效，如果模型自行输出 ```json action``` 仍可解析
+            console.log(`[Converter] 工具禁用模式: ${tools.length} 个工具定义已跳过，不占用上下文`);
+
+            // 只注入系统提示词（如果有），不包含任何工具相关内容
+            if (combinedSystem) {
+                if (thinkingEnabled) {
+                    combinedSystem += thinkingHint;
+                }
+                messages.push({
+                    parts: [{ type: 'text', text: combinedSystem }],
+                    id: shortId(),
+                    role: 'user',
+                });
+                messages.push({
+                    parts: [{ type: 'text', text: 'Understood. I\'ll help you with the task.' }],
+                    id: shortId(),
+                    role: 'assistant',
+                });
+            }
+
+        } else if (isPassthrough) {
             // ★ 透传模式：直接嵌入原始工具定义，跳过 few-shot 注入
             // 目的：减少与 Cursor 内建身份的提示词冲突
             // 适用：Roo Code、Cline 等非 Claude Code 客户端

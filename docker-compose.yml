@@ -51,6 +51,14 @@ services:
       # 默认使用本地 OCR（零配置），如需外部 Vision API 请在 config.yaml 中修改 vision.mode 为 'api'
       # 并配置 vision.base_url / vision.api_key / vision.model
 
+      # ── 工具透传模式（推荐 Roo Code / Cline 等非 Claude Code 客户端） ──
+      # 开启后跳过 few-shot 注入，直接嵌入工具定义，减少身份冲突
+      # - TOOLS_PASSTHROUGH=true
+
+      # ── 工具禁用模式（极致省上下文） ──
+      # 完全不注入工具定义和 few-shot，模型凭训练记忆调用工具
+      # - TOOLS_DISABLED=true
+
       # ── 响应内容清洗 ──
       # 开启后会将响应中 Cursor 身份引用替换为 Claude（默认关闭）
       # - SANITIZE_RESPONSE=true

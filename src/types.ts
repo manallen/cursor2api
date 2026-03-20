@@ -136,6 +136,7 @@ export interface AppConfig {
         includeOnly?: string[];                           // 白名单：只保留的工具名
         exclude?: string[];                               // 黑名单：要排除的工具名
         passthrough?: boolean;                            // 透传模式：跳过 few-shot 注入，直接嵌入工具定义
+        disabled?: boolean;                               // 禁用模式：完全不注入工具定义，最大化节省上下文
     };
     sanitizeEnabled: boolean;    // 是否启用响应内容清洗（替换 Cursor 身份引用为 Claude），默认 false
     refusalPatterns?: string[];  // 自定义拒绝检测规则（追加到内置列表之后）

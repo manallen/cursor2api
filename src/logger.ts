@@ -316,7 +316,13 @@ export function createRequestLogger(opts: {
         requestPayloads.delete(oldId);
     }
 
-    const toolInfo = opts.hasTools ? ` tools=${opts.toolCount}` : '';
+    const toolMode = (() => {
+        const cfg = getConfig().tools;
+        if (cfg?.disabled) return '(跳过)';
+        if (cfg?.passthrough) return '(透传)';
+        return '';
+    })();
+    const toolInfo = opts.hasTools ? ` tools=${opts.toolCount}${toolMode}` : '';
     const fmtTag = summary.apiFormat === 'openai' ? ' [OAI]' : summary.apiFormat === 'responses' ? ' [RSP]' : '';
     console.log(`\x1b[36m⟶\x1b[0m [${requestId}] ${opts.method} ${opts.path}${fmtTag} | model=${opts.model} stream=${opts.stream}${toolInfo} msgs=${opts.messageCount}`);
     

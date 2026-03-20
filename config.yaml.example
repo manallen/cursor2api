@@ -106,6 +106,23 @@ tools:
   # exclude:
   #   - "some_mcp_tool"
 
+  # ★ 透传模式（推荐 Roo Code / Cline 等非 Claude Code 客户端开启）
+  #   true:  跳过 few-shot 注入和工具格式改写，直接将工具定义以原始 JSON 嵌入系统提示词
+  #          减少与 Cursor 内建身份的提示词冲突，解决「只有 read_file/read_dir」的错误
+  #          工具调用仍使用 ```json action``` 格式，响应解析不受影响
+  #   false: [默认] 使用标准模式（buildToolInstructions + 多类别 few-shot 注入）
+  #          Claude Code 推荐此模式，兼容性和工具调用覆盖率更好
+  # 环境变量: TOOLS_PASSTHROUGH=true|false
+  # passthrough: true
+
+  # ★ 禁用模式（极致省上下文）
+  #   true:  完全不注入工具定义和 few-shot 示例，节省大量上下文空间
+  #          模型凭自身训练记忆处理工具调用（适合已内化工具格式的场景）
+  #          响应中的 ```json action``` 块仍会被正常解析
+  #   false: [默认] 正常注入工具定义
+  # 环境变量: TOOLS_DISABLED=true|false
+  # disabled: true
+
 # ==================== 响应内容清洗（可选，默认关闭） ====================
 # 开启后，会将响应中 Cursor 相关的身份引用替换为 Claude
 # 例如 "I am Cursor's support assistant" → "I am Claude, an AI assistant by Anthropic"

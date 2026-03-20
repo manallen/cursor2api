@@ -159,12 +159,18 @@ app.listen(config.port, () => {
     const toolsCfg = config.tools;
     let toolsInfo = 'default (full, desc=full)';
     if (toolsCfg) {
-        const parts: string[] = [];
-        parts.push(`schema=${toolsCfg.schemaMode}`);
-        parts.push(toolsCfg.descriptionMaxLength === 0 ? 'desc=full' : `desc≤${toolsCfg.descriptionMaxLength}`);
-        if (toolsCfg.includeOnly?.length) parts.push(`whitelist=${toolsCfg.includeOnly.length}`);
-        if (toolsCfg.exclude?.length) parts.push(`blacklist=${toolsCfg.exclude.length}`);
-        toolsInfo = parts.join(', ');
+        if (toolsCfg.disabled) {
+            toolsInfo = '\x1b[33mdisabled\x1b[0m (不注入工具定义，节省上下文)';
+        } else if (toolsCfg.passthrough) {
+            toolsInfo = '\x1b[36mpassthrough\x1b[0m (原始 JSON 嵌入)';
+        } else {
+            const parts: string[] = [];
+            parts.push(`schema=${toolsCfg.schemaMode}`);
+            parts.push(toolsCfg.descriptionMaxLength === 0 ? 'desc=full' : `desc≤${toolsCfg.descriptionMaxLength}`);
+            if (toolsCfg.includeOnly?.length) parts.push(`whitelist=${toolsCfg.includeOnly.length}`);
+            if (toolsCfg.exclude?.length) parts.push(`blacklist=${toolsCfg.exclude.length}`);
+            toolsInfo = parts.join(', ');
+        }
     }
     
     console.log('');
