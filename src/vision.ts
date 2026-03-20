@@ -3,6 +3,8 @@ import type { AnthropicMessage, AnthropicContentBlock } from './types.js';
 import { getVisionProxyFetchOptions } from './proxy-agent.js';
 import { createWorker } from 'tesseract.js';
 
+const DEFAULT_VISION_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+
 export async function applyVisionInterceptor(messages: AnthropicMessage[]): Promise<void> {
     const config = getConfig();
     if (!config.vision?.enabled) return;
@@ -73,6 +75,55 @@ export async function applyVisionInterceptor(messages: AnthropicMessage[]): Prom
 // ★ 不支持 OCR 的图片格式（矢量图、动画等）
 const UNSUPPORTED_OCR_TYPES = new Set(['image/svg+xml']);
 
+export function normalizeVisionApiEndpoint(baseUrl: string): string {
+    const trimmed = baseUrl.trim();
+    if (!trimmed) return DEFAULT_VISION_ENDPOINT;
+
+    try {
+        const url = new URL(trimmed);
+        const pathname = url.pathname.replace(/\/+$/, '');
+        if (pathname.endsWith('/chat/completions')) return url.toString();
+
+        url.pathname = pathname ? `${pathname}/chat/completions` : '/v1/chat/completions';
+        return url.toString();
+    } catch {
+        return trimmed;
+    }
+}
+
+function summarizeBodySnippet(body: string, maxLen = 180): string {
+    const normalized = body.replace(/\s+/g, ' ').trim();
+    if (!normalized) return '(empty body)';
+    return normalized.length > maxLen ? `${normalized.slice(0, maxLen)}...` : normalized;
+}
+
+function buildVisionResponseError(endpoint: string, status: number, contentType: string, body: string): Error {
+    const snippet = summarizeBodySnippet(body);
+    const looksLikeHtml = /^<!doctype|^<html|^</i.test(snippet);
+    const hint = looksLikeHtml
+        ? '通常表示 `vision.base_url` / `VISION_BASE_URL` 指向了网页而不是 OpenAI 兼容的 `/chat/completions` 接口，或被登录页 / 网关 / 代理拦截。'
+        : '请检查 `vision.base_url` / `VISION_BASE_URL`、模型名和鉴权是否正确。';
+
+    return new Error(`Vision API 响应异常 (status=${status}, content-type=${contentType || 'unknown'}, endpoint=${endpoint})。${hint} 响应片段: ${snippet}`);
+}
+
+function extractVisionMessageText(data: any): string {
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content === 'string' && content.trim()) return content;
+    if (Array.isArray(content)) {
+        const text = content
+            .map((part) => {
+                if (typeof part === 'string') return part;
+                if (typeof part?.text === 'string') return part.text;
+                return '';
+            })
+            .filter(Boolean)
+            .join('\n');
+        if (text.trim()) return text;
+    }
+    return 'No description returned.';
+}
+
 async function processWithLocalOCR(imageBlocks: AnthropicContentBlock[]): Promise<string> {
     const worker = await createWorker('eng+chi_sim');
     let combinedText = '';
@@ -113,6 +164,11 @@ async function processWithLocalOCR(imageBlocks: AnthropicContentBlock[]): Promis
 
 async function callVisionAPI(imageBlocks: AnthropicContentBlock[]): Promise<string> {
     const config = getConfig().vision!;
+    const endpoint = normalizeVisionApiEndpoint(config.baseUrl || '');
+
+    if (!config.apiKey?.trim()) {
+        throw new Error('Vision API 模式已启用，但未配置 API Key。请检查 `vision.api_key` / `VISION_API_KEY`。');
+    }
 
     // Construct an array of OpenAI format message parts
     const parts: any[] = [
@@ -143,7 +199,9 @@ async function callVisionAPI(imageBlocks: AnthropicContentBlock[]): Promise<stri
         max_tokens: 1500
     };
 
-    const res = await fetch(config.baseUrl, {
+    console.log(`[Vision] 🌐 调用外部视觉 API: ${endpoint} | model=${config.model} | images=${imageBlocks.length}`);
+
+    const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -153,10 +211,24 @@ async function callVisionAPI(imageBlocks: AnthropicContentBlock[]): Promise<stri
         ...getVisionProxyFetchOptions(),
     } as any);
 
+    const raw = await res.text();
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
     if (!res.ok) {
-        throw new Error(`Vision API returned status ${res.status}: ${await res.text()}`);
+        throw buildVisionResponseError(endpoint, res.status, contentType, raw);
     }
 
-    const data = await res.json() as any;
-    return data.choices?.[0]?.message?.content || 'No description returned.';
+    const looksLikeJson = contentType.includes('application/json') || /^[\[{]/.test(raw.trim());
+    if (!looksLikeJson) {
+        throw buildVisionResponseError(endpoint, res.status, contentType, raw);
+    }
+
+    let data: any;
+    try {
+        data = JSON.parse(raw);
+    } catch {
+        throw buildVisionResponseError(endpoint, res.status, contentType, raw);
+    }
+
+    return extractVisionMessageText(data);
 }

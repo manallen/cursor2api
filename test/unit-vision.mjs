@@ -1,7 +1,7 @@
 /**
  * test/unit-vision.mjs
  *
- * 单元测试：Vision 拦截器仅处理 user 图片消息
+ * 单元测试：Vision 拦截器仅处理最后一条 user 图片消息
  * 运行方式：node test/unit-vision.mjs
  */
 
@@ -25,56 +25,69 @@ function assert(condition, msg) {
 }
 
 async function applyVisionInterceptor(messages) {
-    for (const msg of messages) {
-        if (msg.role !== 'user') continue;
-        if (!Array.isArray(msg.content)) continue;
-
-        const newContent = [];
-        const imagesToAnalyze = [];
-
-        for (const block of msg.content) {
-            if (block.type === 'image') {
-                imagesToAnalyze.push(block);
-            } else {
-                newContent.push(block);
-            }
+    let lastUserMsg = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+            lastUserMsg = messages[i];
+            break;
         }
+    }
 
-        if (imagesToAnalyze.length > 0) {
-            newContent.push({
-                type: 'text',
-                text: `[System: The user attached ${imagesToAnalyze.length} image(s). Visual analysis/OCR extracted the following context:\nmock vision result]`,
-            });
-            msg.content = newContent;
+    if (!lastUserMsg || !Array.isArray(lastUserMsg.content)) return;
+
+    const newContent = [];
+    const imagesToAnalyze = [];
+
+    for (const block of lastUserMsg.content) {
+        if (block.type === 'image') {
+            imagesToAnalyze.push(block);
+        } else {
+            newContent.push(block);
         }
+    }
+
+    if (imagesToAnalyze.length > 0) {
+        newContent.push({
+            type: 'text',
+            text: `[System: The user attached ${imagesToAnalyze.length} image(s). Visual analysis/OCR extracted the following context:\nmock vision result]`,
+        });
+        lastUserMsg.content = newContent;
     }
 }
 
 console.log('\n📦 [1] Vision 角色范围\n');
 
-await test('仅处理 user 消息中的图片', async () => {
+await test('仅处理最后一条 user 消息中的图片', async () => {
     const messages = [
+        {
+            role: 'user',
+            content: [
+                { type: 'text', text: 'historical image' },
+                { type: 'image', source: { type: 'url', data: 'https://example.com/a.jpg' } },
+            ],
+        },
         {
             role: 'assistant',
             content: [
                 { type: 'text', text: 'assistant says hi' },
-                { type: 'image', source: { type: 'url', data: 'https://example.com/a.jpg' } },
+                { type: 'image', source: { type: 'url', data: 'https://example.com/b.jpg' } },
             ],
         },
         {
             role: 'user',
             content: [
                 { type: 'text', text: 'please inspect this image' },
-                { type: 'image', source: { type: 'url', data: 'https://example.com/b.jpg' } },
+                { type: 'image', source: { type: 'url', data: 'https://example.com/c.jpg' } },
             ],
         },
     ];
 
     await applyVisionInterceptor(messages);
 
-    assert(messages[0].content.some(block => block.type === 'image'), 'assistant image should remain untouched');
-    assert(messages[1].content.every(block => block.type !== 'image'), 'user images should be converted away');
-    assert(messages[1].content.some(block => block.type === 'text' && block.text.includes('mock vision result')), 'user message should receive vision text');
+    assert(messages[0].content.some(block => block.type === 'image'), 'earlier user image should remain untouched');
+    assert(messages[1].content.some(block => block.type === 'image'), 'assistant image should remain untouched');
+    assert(messages[2].content.every(block => block.type !== 'image'), 'last user images should be converted away');
+    assert(messages[2].content.some(block => block.type === 'text' && block.text.includes('mock vision result')), 'last user message should receive vision text');
 });
 
 await test('忽略非数组内容的 user 消息', async () => {

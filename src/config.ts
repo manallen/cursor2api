@@ -2,6 +2,9 @@ import { readFileSync, existsSync, watch, type FSWatcher } from 'fs';
 import { parse as parseYaml } from 'yaml';
 import type { AppConfig } from './types.js';
 
+const DEFAULT_VISION_BASE_URL = 'https://api.openai.com/v1/chat/completions';
+const DEFAULT_VISION_MODEL = 'gpt-4o-mini';
+
 let config: AppConfig;
 let watcher: FSWatcher | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -9,6 +12,26 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 // 配置变更回调
 type ConfigReloadCallback = (newConfig: AppConfig, changes: string[]) => void;
 const reloadCallbacks: ConfigReloadCallback[] = [];
+
+function normalizeVisionMode(value: unknown): 'ocr' | 'api' {
+    return String(value || '').trim().toLowerCase() === 'api' ? 'api' : 'ocr';
+}
+
+function createDefaultVisionConfig(): NonNullable<AppConfig['vision']> {
+    return {
+        enabled: true,
+        mode: 'ocr',
+        baseUrl: DEFAULT_VISION_BASE_URL,
+        apiKey: '',
+        model: DEFAULT_VISION_MODEL,
+        proxy: undefined,
+    };
+}
+
+function ensureVisionConfig(cfg: AppConfig): NonNullable<AppConfig['vision']> {
+    if (!cfg.vision) cfg.vision = createDefaultVisionConfig();
+    return cfg.vision;
+}
 
 /**
  * 注册配置热重载回调
@@ -41,13 +64,14 @@ function parseYamlConfig(defaults: AppConfig): { config: AppConfig; raw: Record<
             if (yaml.fingerprint.user_agent) result.fingerprint.userAgent = yaml.fingerprint.user_agent;
         }
         if (yaml.vision) {
+            const vision = yaml.vision;
             result.vision = {
-                enabled: yaml.vision.enabled !== false,
-                mode: yaml.vision.mode || 'ocr',
-                baseUrl: yaml.vision.base_url || 'https://api.openai.com/v1/chat/completions',
-                apiKey: yaml.vision.api_key || '',
-                model: yaml.vision.model || 'gpt-4o-mini',
-                proxy: yaml.vision.proxy || undefined,
+                enabled: vision.enabled !== false,
+                mode: normalizeVisionMode(vision.mode),
+                baseUrl: vision.base_url || vision.baseUrl || DEFAULT_VISION_BASE_URL,
+                apiKey: vision.api_key || vision.apiKey || '',
+                model: vision.model || DEFAULT_VISION_MODEL,
+                proxy: vision.proxy || undefined,
             };
         }
         // ★ API 鉴权 token
@@ -145,6 +169,56 @@ function applyEnvOverrides(cfg: AppConfig): void {
         if (!cfg.logging) cfg.logging = { file_enabled: false, dir: './logs', max_days: 7 };
         cfg.logging.dir = process.env.LOG_DIR;
     }
+
+    const hasVisionEnv = [
+        'VISION_ENABLED',
+        'VISION_MODE',
+        'VISION_BASE_URL',
+        'VISION_BASEURL',
+        'VISION_API_KEY',
+        'VISION_APIKEY',
+        'VISION_MODEL',
+        'VISION_PROXY',
+    ].some((key) => process.env[key] !== undefined);
+
+    if (hasVisionEnv) {
+        const hadVisionConfig = !!cfg.vision;
+        const hasApiVisionEnv = [
+            process.env.VISION_BASE_URL,
+            process.env.VISION_BASEURL,
+            process.env.VISION_API_KEY,
+            process.env.VISION_APIKEY,
+            process.env.VISION_MODEL,
+        ].some((value) => value !== undefined && value !== '');
+
+        const vision = ensureVisionConfig(cfg);
+
+        if (process.env.VISION_ENABLED !== undefined) {
+            vision.enabled = process.env.VISION_ENABLED !== 'false' && process.env.VISION_ENABLED !== '0';
+        }
+        if (process.env.VISION_MODE) {
+            vision.mode = normalizeVisionMode(process.env.VISION_MODE);
+        } else if (!hadVisionConfig && hasApiVisionEnv) {
+            vision.mode = 'api';
+        }
+        if (process.env.VISION_BASE_URL) {
+            vision.baseUrl = process.env.VISION_BASE_URL;
+        } else if (process.env.VISION_BASEURL) {
+            vision.baseUrl = process.env.VISION_BASEURL;
+        }
+        if (process.env.VISION_API_KEY !== undefined) {
+            vision.apiKey = process.env.VISION_API_KEY;
+        } else if (process.env.VISION_APIKEY !== undefined) {
+            vision.apiKey = process.env.VISION_APIKEY;
+        }
+        if (process.env.VISION_MODEL) {
+            vision.model = process.env.VISION_MODEL;
+        }
+        if (process.env.VISION_PROXY !== undefined) {
+            vision.proxy = process.env.VISION_PROXY || undefined;
+        }
+    }
+
     // 响应内容清洗环境变量覆盖
     if (process.env.SANITIZE_RESPONSE !== undefined) {
         cfg.sanitizeEnabled = process.env.SANITIZE_RESPONSE === 'true' || process.env.SANITIZE_RESPONSE === '1';

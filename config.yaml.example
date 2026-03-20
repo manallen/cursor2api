@@ -132,6 +132,13 @@ fingerprint:
 
 # ==================== 视觉处理降级配置（可选） ====================
 # 如果开启，可以拦截您发给大模型的图片进行降级处理（因为目前免费 Cursor 不支持视觉）。
+# 环境变量:
+#   VISION_ENABLED=true|false
+#   VISION_MODE=ocr|api
+#   VISION_BASE_URL=https://openrouter.ai/api/v1   # 也支持直接填完整 /chat/completions
+#   VISION_API_KEY=sk-...
+#   VISION_MODEL=meta-llama/llama-3.2-11b-vision-instruct:free
+#   VISION_PROXY=http://127.0.0.1:7890
 vision:
   enabled: true
   # mode 选项: 'ocr' 或 'api'
@@ -140,6 +147,7 @@ vision:
   mode: 'ocr'
   
   # ---------- 以下选项仅在 mode: 'api' 时才生效 ----------
+  # 💡 `base_url` 既可填写完整 `.../chat/completions`，也可填写到 `/v1` 的兼容基址，程序会自动补全。
   # base_url: "https://openrouter.ai/api/v1/chat/completions"
   # api_key: "sk-or-v1-..."
   # model: "meta-llama/llama-3.2-11b-vision-instruct:free"

@@ -28,6 +28,22 @@ import { applyVisionInterceptor } from './vision.js';
 import { fixToolCallArguments } from './tool-fixer.js';
 import { getVisionProxyFetchOptions } from './proxy-agent.js';
 
+function countImagesInMessage(message: AnthropicMessage | null): number {
+    if (!message || !Array.isArray(message.content)) return 0;
+    let count = 0;
+    for (const block of message.content) {
+        if (block.type === 'image') count++;
+    }
+    return count;
+}
+
+function findLastUserMessage(messages: AnthropicMessage[]): AnthropicMessage | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') return messages[i];
+    }
+    return null;
+}
+
 // ==================== 工具指令构建 ====================
 
 /**
@@ -1549,21 +1565,28 @@ async function preprocessImages(messages: AnthropicMessage[]): Promise<void> {
 
     // ★ Phase 3: 调用 vision 拦截器处理（OCR / 外部 API）
     try {
+        const lastUserMsg = findLastUserMessage(messages);
         await applyVisionInterceptor(messages);
 
-        // 验证处理结果：检查是否还有残留的 image block
-        let remainingImages = 0;
+        // 验证处理结果：仅检查最后一条 user 消息
+        // 历史 user 消息中的图片按设计不会重复送入 Vision 处理
+        const remainingImagesInLastUser = countImagesInMessage(lastUserMsg);
+        let remainingHistoricalImages = 0;
         for (const msg of messages) {
+            if (msg === lastUserMsg) continue;
             if (!Array.isArray(msg.content)) continue;
             for (const block of msg.content) {
-                if (block.type === 'image') remainingImages++;
+                if (block.type === 'image') remainingHistoricalImages++;
             }
         }
 
-        if (remainingImages > 0) {
-            console.warn(`[Converter] ⚠️ Vision 处理后仍有 ${remainingImages} 张图片未转换为文本`);
+        if (remainingImagesInLastUser > 0) {
+            console.warn(`[Converter] ⚠️ 当前最后一条用户消息仍有 ${remainingImagesInLastUser} 张图片未转换为文本`);
         } else {
-            console.log(`[Converter] ✅ 所有图片已成功处理 (vision ${getConfig().vision?.mode || 'disabled'})`);
+            console.log(`[Converter] ✅ 当前最后一条用户消息图片已处理完成 (vision ${getConfig().vision?.mode || 'disabled'})`);
+            if (remainingHistoricalImages > 0) {
+                console.log(`[Converter] ℹ️ 较早消息中仍有 ${remainingHistoricalImages} 张历史图片保留（按设计不重复处理）`);
+            }
         }
     } catch (err) {
         console.error(`[Converter] ❌ vision 预处理失败:`, err);
@@ -1583,4 +1606,3 @@ function guessMediaType(url: string): string {
     if (lower.includes('.bmp')) return 'image/bmp';
     return 'image/jpeg'; // 默认 JPEG
 }
-

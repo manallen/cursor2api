@@ -246,6 +246,13 @@ AI 按此格式输出 → 我们解析并转换为标准的 Anthropic `tool_use`
 | `LOG_FILE_ENABLED` | 日志文件持久化 (`true`/`false`) |
 | `LOG_DIR` | 日志文件目录 |
 | `MAX_AUTO_CONTINUE` | 截断自动续写次数 (`0`=禁用) |
+| `MAX_HISTORY_MESSAGES` | 历史消息条数上限 (`-1`=不限制) |
+| `VISION_ENABLED` | 视觉拦截开关 (`true`/`false`) |
+| `VISION_MODE` | 视觉模式 (`ocr`/`api`) |
+| `VISION_BASE_URL` | 视觉 API 地址；可填完整 `/chat/completions`，也可填到 `/v1` 基址 |
+| `VISION_API_KEY` | 视觉 API Key |
+| `VISION_MODEL` | 视觉模型名 |
+| `VISION_PROXY` | Vision 独立代理 |
 | `SANITIZE_RESPONSE` | 响应内容清洗开关 (`true`/`false`，默认 `false`) |
 
 ## 免责声明 / Disclaimer
